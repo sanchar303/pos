@@ -134,9 +134,9 @@ createApp({
     const api = async body => {
       const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(d.error || "Login failed.");
+      if (!r.ok) throw new Error(d.error || `Login failed (server ${r.status}).`);
       try { await signInWithCustomToken(auth, d.token); }
-      catch (e) { throw new Error(/configuration-not-found|operation-not-allowed/.test(e.code || "") ? "Enable Authentication in the Firebase console." : "Login failed."); }
+      catch (e) { throw new Error(/configuration-not-found|operation-not-allowed/.test(e.code || "") ? "Enable Authentication in the Firebase console." : `Login failed (${e.code || e.message}).`); }
       return d;
     };
     const loginTenant = guard(async () => {
