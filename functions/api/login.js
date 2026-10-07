@@ -73,5 +73,12 @@ export async function onRequestPost({ request, env }) {
   }
 }
 
-// Health check: open /api/login in a browser. {"ok":true} means this function is deployed.
-export const onRequestGet = () => out({ ok: true });
+// Health check: open /api/login in a browser. true/false flags show which settings are present (never their values).
+export const onRequestGet = ({ env }) => out({
+  ok: true,
+  hq: !!(env.HQ_PASSWORD || env.HQ_HASH),
+  key: !!env.FB_PRIVATE_KEY,
+  email: !!env.FB_CLIENT_EMAIL,
+  db: !!env.DB_URL,
+  kv: !!env.RL
+});
