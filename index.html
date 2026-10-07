@@ -3,22 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#e8eefc">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="8848">
-  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#eaf0ff">
   <title>8848 - Cloud Restaurant POS</title>
-  <meta name="robots" content="noindex,nofollow">
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="apple-touch-icon" href="favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Mukta:wght@500;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-  <script src="https://unpkg.com/vue@3.5.13/dist/vue.global.prod.js"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 </head>
-<body>
+<body oncontextmenu="return false;" ondragstart="return false;" onselectstart="return false;" oncopy="return false;" oncut="return false;" onpaste="return false;">
 <div id="app" v-cloak>
 
   <!-- Notice -->
@@ -36,7 +31,7 @@
   <!-- Login -->
   <section v-if="!session" class="login">
     <div class="login-box">
-      <div class="brand big"><img src="favicon.png" alt=""><div><h1>8848</h1><p class="mu">Cloud Restaurant POS</p></div></div>
+      <div class="brand big"><img src="favicon.png" alt="" onerror="this.style.display='none'"><div><h1>8848</h1><p class="mu">Cloud Restaurant POS</p></div></div>
       <div class="seg">
         <button :class="{on: mode === 'tenant'}" @click="mode = 'tenant'">Restaurant Login</button>
         <button :class="{on: mode === 'hq'}" @click="mode = 'hq'">Owner HQ</button>
@@ -59,7 +54,7 @@
   <template v-else>
     <!-- Header -->
     <header class="top">
-      <div class="brand"><img src="favicon.png" alt=""><b>POS 8848</b></div>
+      <div class="brand"><img src="favicon.png" alt="" onerror="this.style.display='none'"><b>POS 8848</b></div>
       <div class="who">
         <span v-if="session.role === 'hq'" class="tag">System Owner HQ</span>
         <template v-else>
@@ -94,7 +89,7 @@
           <thead><tr><th>Restaurant Name</th><th>Restaurant Code</th><th>PAN / VAT No</th><th>Address</th><th>Phone</th><th></th></tr></thead>
           <tbody>
             <tr v-for="r in list" :key="r.code">
-              <td data-l="Restaurant"><b>{{ r.name }}</b></td><td data-l="Code" class="mono acc">{{ r.code }}</td><td data-l="PAN / VAT" class="mono">{{ r.panNumber || '-' }}</td><td data-l="Address">{{ r.address || '-' }}</td><td data-l="Phone">{{ r.phone || '-' }}</td>
+              <td><b>{{ r.name }}</b></td><td class="mono acc">{{ r.code }}</td><td class="mono">{{ r.panNumber || '-' }}</td><td>{{ r.address || '-' }}</td><td>{{ r.phone || '-' }}</td>
               <td class="row end nowrap">
                 <button class="btn i sm" @click="impersonate(r.code)">Launch Terminal</button>
                 <button class="btn g sm" @click="openT(r)">Edit</button>
@@ -275,13 +270,13 @@
             <tbody>
               <tr v-if="!logs.length"><td colspan="8" class="empty sm">No matching transactions logged.</td></tr>
               <tr v-for="o in logs" :key="o.id">
-                <td data-l="Order" class="mono"><b>#{{ o.id }}</b></td>
-                <td data-l="Time">{{ fdate(o.createdAt) }} {{ o.time }}</td>
-                <td data-l="Customer">{{ o.customerName || o.table || 'Walk-in' }}<small v-if="o.table"> {{ o.table }}</small></td>
-                <td data-l="Type" class="cap">{{ o.orderType.replace('_', '-') }}</td>
-                <td data-l="Payment" class="cap">{{ o.paymentMethod || 'Unpaid' }}</td>
-                <td data-l="Status"><span class="tag" :class="o.isPaid ? 'okc' : 'warn'">{{ o.isPaid ? 'Paid' : 'Unpaid Tab' }}</span></td>
-                <td data-l="Total" class="r acc"><b>{{ cur }} {{ money(o.grandTotal) }}</b></td>
+                <td class="mono"><b>#{{ o.id }}</b></td>
+                <td>{{ fdate(o.createdAt) }} {{ o.time }}</td>
+                <td>{{ o.customerName || o.table || 'Walk-in' }}<small v-if="o.table"> {{ o.table }}</small></td>
+                <td class="cap">{{ o.orderType.replace('_', '-') }}</td>
+                <td class="cap">{{ o.paymentMethod || 'Unpaid' }}</td>
+                <td><span class="tag" :class="o.isPaid ? 'okc' : 'warn'">{{ o.isPaid ? 'Paid' : 'Unpaid Tab' }}</span></td>
+                <td class="r acc"><b>{{ cur }} {{ money(o.grandTotal) }}</b></td>
                 <td><button class="btn g sm" @click="detail = o">Details</button></td>
               </tr>
             </tbody>
