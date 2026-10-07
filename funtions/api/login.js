@@ -72,3 +72,6 @@ export async function onRequestPost({ request, env }) {
     return out({ error: "Server error" }, 500);
   }
 }
+
+// Health check: open /api/login in a browser. {"ok":true} means this function is deployed.
+export const onRequestGet = () => out({ ok: true });
