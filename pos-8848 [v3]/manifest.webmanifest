@@ -1,0 +1,10 @@
+{
+  "name": "8848 - Cloud Restaurant POS",
+  "short_name": "8848",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#e8eefc",
+  "theme_color": "#e8eefc",
+  "icons": [{ "src": "favicon.png", "sizes": "any", "type": "image/png", "purpose": "any" }]
+}

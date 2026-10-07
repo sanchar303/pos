@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#e8eefc">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="8848">
+  <link rel="manifest" href="manifest.webmanifest">
+  <title>8848 - Cloud Restaurant POS</title>
+  <meta name="robots" content="noindex,nofollow">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Mukta:wght@500;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://unpkg.com/vue@3.5.13/dist/vue.global.prod.js"></script>
+</head>
+<body>
+<div id="app" v-cloak>
+
+  <!-- Notice -->
+  <div class="overlay" v-if="notice.show">
+    <div class="modal sm">
+      <h3>{{ notice.title }}</h3>
+      <p class="mu">{{ notice.message }}</p>
+      <div class="row">
+        <button v-if="notice.type === 'confirm'" class="btn g" @click="notice.show = false">Cancel</button>
+        <button class="btn" :class="notice.type === 'error' ? 'p' : 'i'" @click="noticeOk">{{ notice.type === 'confirm' ? 'Confirm' : 'OK' }}</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Login -->
+  <section v-if="!session" class="login">
+    <div class="login-box">
+      <div class="brand big"><img src="favicon.png" alt=""><div><h1>8848</h1><p class="mu">Cloud Restaurant POS</p></div></div>
+      <div class="seg">
+        <button :class="{on: mode === 'tenant'}" @click="mode = 'tenant'">Restaurant Login</button>
+        <button :class="{on: mode === 'hq'}" @click="mode = 'hq'">Owner HQ</button>
+      </div>
+      <form v-if="mode === 'tenant'" @submit.prevent="loginTenant" autocomplete="off">
+        <label>Restaurant Code</label>
+        <input class="inp up" v-model="code" required autocapitalize="characters" autocomplete="off" spellcheck="false">
+        <label>Access PIN</label>
+        <input class="inp" type="password" v-model="pin" required autocomplete="new-password">
+        <button class="btn p wide" :disabled="!ready">Login to POS Terminal</button>
+      </form>
+      <form v-else @submit.prevent="loginHq" autocomplete="off">
+        <label>HQ Owner Password</label>
+        <input class="inp" type="password" v-model="hq" required autocomplete="new-password">
+        <button class="btn i wide">Enter System Owner HQ</button>
+      </form>
+    </div>
+  </section>
+
+  <template v-else>
+    <!-- Header -->
+    <header class="top">
+      <div class="brand"><img src="favicon.png" alt=""><b>POS 8848</b></div>
+      <div class="who">
+        <span v-if="session.role === 'hq'" class="tag">System Owner HQ</span>
+        <template v-else>
+          <span class="tag name">{{ (tenant && tenant.name) || session.code }}</span>
+          <span class="tag" :class="session.isManager ? 'warn' : ''">{{ session.isManager ? 'Manager' : session.staffName }}</span>
+        </template>
+      </div>
+      <div class="row end">
+        <button v-if="session.isImpersonating" class="btn g" @click="exitImp">Exit Impersonation</button>
+        <button class="btn g" @click="logout">Logout</button>
+      </div>
+    </header>
+
+    <nav class="nav" v-if="session.role === 'tenant'">
+      <button v-for="t in tabs" :key="t[0]" :class="{on: view === t[0]}" @click="view = t[0]">{{ t[1] }}<b v-if="t[0] === 'kds' && kds.length" class="badge">{{ kds.length }}</b></button>
+    </nav>
+
+    <!-- HQ -->
+    <main v-if="session.role === 'hq'" class="main">
+      <div class="bar">
+        <h2>Restaurant Outlets Control Center</h2>
+        <button class="btn p" @click="openT(null)">Onboard New Restaurant</button>
+      </div>
+      <div class="stats">
+        <div class="stat"><span>Active Outlets</span><b>{{ list.length }}</b></div>
+        <div class="stat"><span>Global Orders</span><b>{{ gCount }}</b></div>
+        <div class="stat"><span>Network Turnover</span><b>रू {{ money(gRev) }}</b></div>
+      </div>
+      <div v-if="!list.length" class="empty">No Restaurants Provisioned</div>
+      <div v-else class="scroll-x card">
+        <table>
+          <thead><tr><th>Restaurant Name</th><th>Restaurant Code</th><th>PAN / VAT No</th><th>Address</th><th>Phone</th><th></th></tr></thead>
+          <tbody>
+            <tr v-for="r in list" :key="r.code">
+              <td data-l="Restaurant"><b>{{ r.name }}</b></td><td data-l="Code" class="mono acc">{{ r.code }}</td><td data-l="PAN / VAT" class="mono">{{ r.panNumber || '-' }}</td><td data-l="Address">{{ r.address || '-' }}</td><td data-l="Phone">{{ r.phone || '-' }}</td>
+              <td class="row end nowrap">
+                <button class="btn i sm" @click="impersonate(r.code)">Launch Terminal</button>
+                <button class="btn g sm" @click="openT(r)">Edit</button>
+                <button class="btn g sm dng" @click="delT(r.code)">Delete</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+
+    <main v-else class="main" :class="{flush: view === 'pos' || view === 'kds'}">
+
+      <!-- POS -->
+      <div v-if="view === 'pos'" class="pos">
+        <div class="catalog">
+          <div class="card tools">
+            <div class="seg">
+              <button v-for="t in TYPES" :key="t[0]" :class="{on: type === t[0]}" @click="type = t[0]">{{ t[1] }}</button>
+            </div>
+            <select v-if="type === 'dine_in'" class="inp" v-model="table">
+              <option v-for="t in tables" :key="t" :value="t">{{ t }}{{ tabOf(t) ? ' (Occupied)' : '' }}</option>
+            </select>
+            <input class="inp" v-model="cname" placeholder="Customer Name">
+            <input class="inp" v-model="q" placeholder="Search dish item">
+          </div>
+          <div class="chips">
+            <button v-for="c in cats" :key="c" :class="{on: cat === c}" @click="cat = c">{{ c }}</button>
+          </div>
+          <div v-if="!shown.length" class="empty">
+            No menu items in catalog
+            <button v-if="session.isManager" class="btn i" @click="view = 'menu'">Menu Manager</button>
+          </div>
+          <div class="items">
+            <button v-for="i in shown" :key="i.id" class="item" @click="openMod(i)">
+              <i class="dot" :class="i.isVeg ? 'veg' : 'nv'"></i>
+              <span class="emo">{{ i.image || i.name.charAt(0) }}</span>
+              <b>{{ i.name }}</b>
+              <small v-if="i.nepaliName">{{ i.nepaliName }}</small>
+              <em>{{ cur }} {{ money(i.price) }}</em>
+            </button>
+          </div>
+        </div>
+
+        <aside class="cart" :class="{open: cartOpen}">
+          <div class="cart-h">
+            <h3>Order Cart <span class="tag">{{ label }}</span></h3>
+            <button class="btn g sm lg-hide" @click="cartOpen = false">Close</button>
+          </div>
+          <div v-if="running" class="tabline">
+            <span>Running Tab (#{{ running.id }})</span>
+            <button class="btn ok sm" @click="openCo()">Settle Payment</button>
+          </div>
+          <div class="lines">
+            <div v-if="!cart.length" class="empty sm">Cart is Empty</div>
+            <div v-for="(c, n) in cart" :key="n" class="line">
+              <div>
+                <b>{{ c.name }}</b>
+                <small v-if="c.selectedModifiers && c.selectedModifiers.length">{{ c.selectedModifiers.map(m => m.name).join(', ') }}</small>
+                <small v-if="c.note">"{{ c.note }}"</small>
+                <em>{{ cur }} {{ money(c.itemTotal) }}</em>
+              </div>
+              <div class="qty">
+                <button @click="changeQty(c, -1)">-</button><b>{{ c.qty }}</b><button @click="changeQty(c, 1)">+</button>
+              </div>
+            </div>
+          </div>
+          <div class="sum">
+            <div class="kv"><span>Subtotal</span><b>{{ cur }} {{ money(bill.sub) }}</b></div>
+            <div class="kv">
+              <span>Discount <button class="mini" @click="dtype = dtype === 'percent' ? 'flat' : 'percent'">{{ dtype === 'percent' ? '%' : 'NPR' }}</button></span>
+              <input class="inp xs" type="number" min="0" v-model.number="dval">
+            </div>
+            <div v-if="cfg.sc" class="kv"><span>Service Charge ({{ cfg.sr }}%)</span><b>{{ cur }} {{ money(bill.sc) }}</b></div>
+            <div v-if="cfg.vat" class="kv"><span>Nepal VAT ({{ cfg.vr }}%)</span><b>{{ cur }} {{ money(bill.vat) }}</b></div>
+            <div class="kv total"><span>Est. Bill Total</span><b>{{ cur }} {{ money(bill.total) }}</b></div>
+            <div class="row">
+              <button class="btn ok" :disabled="!cart.length && !running" @click="openCo()">Settle</button>
+              <button class="btn p grow" :disabled="!cart.length || busy" @click="sendKot">PLACE ORDER (SEND TO KITCHEN)</button>
+            </div>
+          </div>
+        </aside>
+
+        <div class="dock" v-if="cart.length || running">
+          <button class="dock-t" @click="cartOpen = true"><span class="badge">{{ qtyAll }}</span><span>{{ label }}</span><b>{{ cur }} {{ money(bill.total) }}</b></button>
+          <button class="btn p" :disabled="!cart.length || busy" @click="sendKot">PLACE ORDER</button>
+        </div>
+      </div>
+
+      <!-- KDS -->
+      <div v-if="view === 'kds'" class="kds">
+        <div class="bar"><h2>Kitchen KDS</h2><span class="tag warn">{{ kds.length }} Active Tickets</span></div>
+        <div v-if="!kds.length" class="empty">Kitchen Queue Clear</div>
+        <div class="tickets">
+          <article v-for="o in kds" :key="o.id" class="ticket" :class="'st-' + o.status">
+            <header>
+              <div><b>#{{ o.id }}</b> <span class="tag">{{ o.table || o.orderType }}</span><small>{{ o.time }} | {{ o.staffName || 'Waiter' }}</small></div>
+              <div class="r"><span class="tag">{{ o.status.replace('_', ' ') }}</span><span class="tmr" :class="timerCls(o)">{{ mins(o) }}m</span></div>
+            </header>
+            <div class="tk-items">
+              <div v-for="(i, n) in o.items" :key="n">
+                <b>{{ i.qty }}x {{ i.name }}</b>
+                <small v-if="i.selectedModifiers && i.selectedModifiers.length">{{ i.selectedModifiers.map(m => m.name).join(', ') }}</small>
+                <small v-if="i.note">"{{ i.note }}"</small>
+              </div>
+            </div>
+            <button v-if="o.status === 'pending'" class="btn warn wide" @click="setStatus(o.id, 'in_prep')">Start Prep</button>
+            <button v-if="o.status === 'in_prep'" class="btn ok wide" @click="setStatus(o.id, 'ready')">Ready to Serve</button>
+            <button v-if="o.status === 'ready'" class="btn i wide" @click="setStatus(o.id, 'served')">Mark Served</button>
+          </article>
+        </div>
+      </div>
+
+      <!-- Tables -->
+      <div v-if="view === 'tables'">
+        <div class="bar"><h2>Floor & Tables</h2><button v-if="session.isManager" class="btn ok" @click="showTb = true">+ Add Table</button></div>
+        <div class="tgrid">
+          <div v-for="t in tables" :key="t" class="tbl" :class="{busy: tabOf(t)}">
+            <div class="row between"><b>{{ t }}</b><i class="dot" :class="tabOf(t) ? 'nv' : 'veg'"></i></div>
+            <div v-if="tabOf(t)"><small>#{{ tabOf(t).id }}</small><em>{{ cur }} {{ money(tabOf(t).grandTotal) }}</em></div>
+            <div v-else class="mu">Vacant / Free</div>
+            <div class="row">
+              <button class="btn g sm grow" @click="pickTable(t)">{{ tabOf(t) ? 'View/Append Order' : 'Open Table' }}</button>
+              <button v-if="tabOf(t)" class="btn ok sm" @click="openCo(tabOf(t))">Settle</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Menu -->
+      <div v-if="view === 'menu' && session.isManager">
+        <div class="bar"><h2>Menu Manager</h2><button class="btn i" @click="openM(null)">+ Add New Food Item</button></div>
+        <div v-if="!items.length" class="empty">No Food Items in Menu Catalog</div>
+        <div class="mgrid">
+          <div v-for="i in items" :key="i.id" class="card mcard">
+            <span class="emo lg">{{ i.image || i.name.charAt(0) }}</span>
+            <div class="grow">
+              <b>{{ i.name }}</b><small>{{ i.nepaliName }}</small>
+              <div class="row"><span class="tag">{{ i.category }}</span><i class="dot" :class="i.isVeg ? 'veg' : 'nv'"></i></div>
+              <em>{{ cur }} {{ money(i.price) }}</em>
+            </div>
+            <div class="col">
+              <button class="btn g sm" @click="openM(i)">Edit</button>
+              <button class="btn g sm dng" @click="delM(i.id)">Delete</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Staff -->
+      <div v-if="view === 'staff' && session.isManager" class="narrow">
+        <div class="bar"><h2>Staff & PINs</h2><button class="btn i" @click="openS">+ Add Staff Member</button></div>
+        <div v-if="!staff.length" class="empty">No Staff PINs Created Yet</div>
+        <div v-for="s in staff" :key="s.id" class="card row between pad">
+          <div><b>{{ s.name }}</b></div>
+          <div class="row"><span class="mono tag">****</span><button class="btn g sm dng" @click="delS(s.id)">Delete</button></div>
+        </div>
+      </div>
+
+      <!-- Reports -->
+      <div v-if="view === 'reports' && session.isManager">
+        <div class="bar">
+          <h2>Sales & Reports</h2>
+          <div class="row">
+            <select class="inp" v-model="range"><option value="today">Today</option><option value="week">Last 7 Days</option><option value="all">All Time</option></select>
+            <button class="btn ok" @click="exportCsv">Export CSV</button>
+          </div>
+        </div>
+        <div class="stats four">
+          <div class="stat"><span>Sales Turnover</span><b>{{ cur }} {{ money(rRev) }}</b></div>
+          <div class="stat"><span>Paid Bills</span><b>{{ paid.length }}</b></div>
+          <div class="stat"><span>Nepal VAT (13%)</span><b>{{ cur }} {{ money(rVat) }}</b></div>
+          <div class="stat"><span>Average Bill</span><b>{{ cur }} {{ money(rAvg) }}</b></div>
+        </div>
+        <div class="card scroll-x">
+          <table>
+            <thead><tr><th>Order ID</th><th>Time</th><th>Customer / Table</th><th>Type</th><th>Payment</th><th>Status</th><th class="r">Total</th><th></th></tr></thead>
+            <tbody>
+              <tr v-if="!logs.length"><td colspan="8" class="empty sm">No matching transactions logged.</td></tr>
+              <tr v-for="o in logs" :key="o.id">
+                <td data-l="Order" class="mono"><b>#{{ o.id }}</b></td>
+                <td data-l="Time">{{ fdate(o.createdAt) }} {{ o.time }}</td>
+                <td data-l="Customer">{{ o.customerName || o.table || 'Walk-in' }}<small v-if="o.table"> {{ o.table }}</small></td>
+                <td data-l="Type" class="cap">{{ o.orderType.replace('_', '-') }}</td>
+                <td data-l="Payment" class="cap">{{ o.paymentMethod || 'Unpaid' }}</td>
+                <td data-l="Status"><span class="tag" :class="o.isPaid ? 'okc' : 'warn'">{{ o.isPaid ? 'Paid' : 'Unpaid Tab' }}</span></td>
+                <td data-l="Total" class="r acc"><b>{{ cur }} {{ money(o.grandTotal) }}</b></td>
+                <td><button class="btn g sm" @click="detail = o">Details</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Settings -->
+      <div v-if="view === 'settings' && session.isManager" class="narrow">
+        <div class="bar"><h2>Outlet Settings</h2><span class="tag mono">{{ session.code }}</span></div>
+        <form class="card form" @submit.prevent="saveSet">
+          <div class="two">
+            <div><label>Restaurant Name</label><input class="inp" v-model="sfm.name" required></div>
+            <div><label>PAN / VAT Number</label><input class="inp" v-model="sfm.panNumber"></div>
+            <div><label>Address Location</label><input class="inp" v-model="sfm.address"></div>
+            <div><label>Phone Contact</label><input class="inp" v-model="sfm.phone"></div>
+            <div><label>Manager Access PIN</label><input class="inp" type="password" v-model="sfm.managerPin" required autocomplete="new-password"></div>
+            <div><label>Currency Symbol</label><input class="inp" v-model="sfm.currencySymbol" required></div>
+          </div>
+          <label>Thermal Receipt Header / Footer Note</label>
+          <input class="inp" v-model="sfm.receiptFooter">
+          <label class="check"><input type="checkbox" v-model="sfm.vatEnabled"><span>Nepal 13% VAT Calculation</span></label>
+          <label class="check"><input type="checkbox" v-model="sfm.serviceChargeEnabled"><span>10% Service Charge</span></label>
+          <button class="btn p wide" :disabled="busy">Save Outlet Settings</button>
+        </form>
+      </div>
+    </main>
+  </template>
+
+  <!-- Modifier -->
+  <div class="overlay" v-if="mi">
+    <div class="modal">
+      <div class="row between"><h3>{{ mi.name }}</h3><button class="btn g sm" @click="mi = null">Close</button></div>
+      <p class="acc"><b>{{ cur }} {{ money(mi.price) }}</b></p>
+      <label>Spice Level & Addons</label>
+      <div class="opts">
+        <button v-for="m in MODS" :key="m.name" :class="{on: picked(m)}" @click="togMod(m)">{{ m.name }}<small v-if="m.priceExtra">+{{ cur }}{{ m.priceExtra }}</small></button>
+      </div>
+      <label>Special Note</label>
+      <input class="inp" v-model="mNote">
+      <div class="row between">
+        <div class="qty big"><button @click="mQty = Math.max(1, mQty - 1)">-</button><b>{{ mQty }}</b><button @click="mQty++">+</button></div>
+        <button class="btn p grow" @click="addToCart">Add Item to Order</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Checkout -->
+  <div class="overlay" v-if="showCo && co">
+    <div class="modal">
+      <div class="row between"><div><h3>Settle & Close Bill Tab</h3><p class="acc"><b>Total Payable: {{ cur }} {{ money(co.grandTotal) }}</b></p></div><button class="btn g sm" @click="showCo = false">Close</button></div>
+      <div class="pays">
+        <button v-for="p in PAYS" :key="p[0]" :class="{on: method === p[0]}" @click="method = p[0]">{{ p[1] }}</button>
+      </div>
+      <div v-if="method === 'cash'" class="card pad">
+        <div class="kv"><span>Amount Tendered (NPR)</span><input class="inp xs" type="number" min="0" v-model.number="cash"></div>
+        <div class="kv total"><span>Change Due</span><b>{{ cur }} {{ money(Math.max(0, (cash || 0) - co.grandTotal)) }}</b></div>
+      </div>
+      <button class="btn ok wide" :disabled="busy" @click="finalize">Confirm Settlement & Print Receipt</button>
+    </div>
+  </div>
+
+  <!-- Tables modal -->
+  <div class="overlay" v-if="showTb">
+    <div class="modal">
+      <div class="row between"><h3>Floor & Tables</h3><button class="btn g sm" @click="showTb = false">Close</button></div>
+      <form class="row" @submit.prevent="addTable"><input class="inp grow" v-model="tbName" placeholder="Table Name"><button class="btn ok">Add Table</button></form>
+      <div class="list">
+        <div v-for="t in tables" :key="t" class="row between card pad"><b>{{ t }}</b><button class="btn g sm dng" @click="delTable(t)">Delete</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Order detail -->
+  <div class="overlay" v-if="detail">
+    <div class="modal">
+      <div class="row between"><div><h3>Order #{{ detail.id }}</h3><small class="mu">{{ fdate(detail.createdAt) }} {{ detail.time }}</small></div><button class="btn g sm" @click="detail = null">Close</button></div>
+      <div class="card pad">
+        <div class="kv"><span>Customer</span><b>{{ detail.customerName || 'Walk-in' }}</b></div>
+        <div class="kv"><span>Table/Mode</span><b>{{ detail.table || detail.orderType }}</b></div>
+        <div class="kv"><span>Payment</span><b class="cap">{{ detail.paymentMethod || 'Unpaid' }}</b></div>
+        <div class="kv"><span>Staff</span><b>{{ detail.staffName || 'Waiter' }}</b></div>
+      </div>
+      <div class="list sm"><div v-for="(i, n) in detail.items" :key="n" class="kv"><span>{{ i.qty }}x {{ i.name }}</span><b>{{ cur }} {{ money(i.itemTotal) }}</b></div></div>
+      <div class="kv total"><span>Grand Total</span><b>{{ cur }} {{ money(detail.grandTotal) }}</b></div>
+      <button class="btn i wide" @click="printOrder(detail); detail = null">Print Receipt</button>
+    </div>
+  </div>
+
+  <!-- Outlet modal -->
+  <div class="overlay" v-if="showT">
+    <div class="modal">
+      <div class="row between"><h3>{{ editT ? 'Edit Restaurant' : 'Onboard New Restaurant' }}</h3><button class="btn g sm" @click="showT = false">Close</button></div>
+      <form class="form" @submit.prevent="saveT" autocomplete="off">
+        <label>Restaurant Name</label><input class="inp" v-model="tf.name" required>
+        <div class="two">
+          <div><label>Restaurant Code</label><input class="inp up" v-model="tf.code" required :disabled="!!editT" autocomplete="off" spellcheck="false"></div>
+          <div><label>Manager Access PIN</label><input class="inp" type="password" v-model="tf.managerPin" required autocomplete="new-password"></div>
+          <div><label>PAN / VAT Number</label><input class="inp" v-model="tf.panNumber" required></div>
+          <div><label>Address</label><input class="inp" v-model="tf.address" required></div>
+        </div>
+        <label>Phone Contact</label><input class="inp" v-model="tf.phone">
+        <button class="btn i wide" :disabled="busy">Save</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Dish modal -->
+  <div class="overlay" v-if="showM">
+    <div class="modal">
+      <div class="row between"><h3>{{ editM ? 'Edit Food Item' : '+ Add New Food Item' }}</h3><button class="btn g sm" @click="showM = false">Close</button></div>
+      <form class="form" @submit.prevent="saveM">
+        <div class="two">
+          <div><label>Dish Name (English)</label><input class="inp" v-model="mf.name" required></div>
+          <div><label>Dish Name (Nepali)</label><input class="inp" v-model="mf.nepaliName"></div>
+          <div><label>Price (NPR)</label><input class="inp" type="number" min="0" v-model.number="mf.price" required></div>
+          <div><label>Category</label><input class="inp" v-model="mf.category" list="catlist" required><datalist id="catlist"><option v-for="c in cats.slice(1)" :key="c" :value="c"></option></datalist></div>
+          <div><label>Emoji Icon</label><input class="inp" v-model="mf.image"></div>
+          <label class="check"><input type="checkbox" v-model="mf.isVeg"><span>Vegetarian?</span></label>
+        </div>
+        <button class="btn i wide" :disabled="busy">Save</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Staff modal -->
+  <div class="overlay" v-if="showS">
+    <div class="modal sm">
+      <div class="row between"><h3>+ Add Staff Member</h3><button class="btn g sm" @click="showS = false">Close</button></div>
+      <form class="form" @submit.prevent="saveS" autocomplete="off">
+        <label>Staff Member Name</label><input class="inp" v-model="sf.name" required>
+        <label>4-Digit Staff PIN</label><input class="inp mono" type="password" inputmode="numeric" maxlength="4" v-model="sf.pin" required autocomplete="new-password">
+        <button class="btn i wide" :disabled="busy">Create Staff Account</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Thermal receipt (print only) -->
+  <div class="receipt" v-if="receipt">
+    <div class="c b big">{{ receipt.tenantName }}</div>
+    <div class="c">{{ receipt.address }}</div>
+    <div class="c" v-if="receipt.panNumber">PAN / VAT #: {{ receipt.panNumber }}</div>
+    <div class="c" v-if="receipt.phone">Tel: {{ receipt.phone }}</div>
+    <hr><div class="c b">*** TAX INVOICE ***</div><hr>
+    <div>Invoice No : #{{ receipt.id }}</div>
+    <div>Date/Time  : {{ fdate(receipt.createdAt) }} {{ receipt.time }}</div>
+    <div>Order Type : {{ receipt.table || receipt.orderType }}</div>
+    <div>Staff      : {{ receipt.staffName || 'Staff' }}</div>
+    <div>Customer   : {{ receipt.customerName || 'Walk-in' }}</div>
+    <hr>
+    <table>
+      <thead><tr><th class="l">Item</th><th>Qty</th><th class="r">Amt</th></tr></thead>
+      <tbody>
+        <tr v-for="(i, n) in receipt.items" :key="n">
+          <td class="l">{{ i.name }}<div class="sm" v-if="i.selectedModifiers && i.selectedModifiers.length">+ {{ i.selectedModifiers.map(m => m.name).join(', ') }}</div></td>
+          <td class="c">{{ i.qty }}</td><td class="r">{{ i.itemTotal }}</td>
+        </tr>
+      </tbody>
+    </table>
+    <hr>
+    <div class="r">
+      <div>Subtotal: {{ cur }} {{ receipt.subtotal }}</div>
+      <div v-if="receipt.discount > 0">Discount: -{{ cur }} {{ receipt.discount }}</div>
+      <div v-if="receipt.serviceCharge > 0">Service Charge: {{ cur }} {{ receipt.serviceCharge }}</div>
+      <div v-if="receipt.vat > 0">VAT: {{ cur }} {{ receipt.vat }}</div>
+      <div class="b big">GRAND TOTAL: {{ cur }} {{ receipt.grandTotal }}</div>
+      <div>Payment: {{ (receipt.paymentMethod || 'unpaid').toUpperCase() }}</div>
+    </div>
+    <hr>
+    <div class="c">{{ (tenant && tenant.receiptFooter) || 'Thank you for dining with us!' }}</div>
+    <div class="c sm">Powered by POS 8848 Nepal</div>
+  </div>
+
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
