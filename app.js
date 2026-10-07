@@ -1,7 +1,8 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getDatabase, ref, onValue, set, update, remove } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, signInWithCustomToken, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-const db = getDatabase(initializeApp({
+const fb = initializeApp({
   apiKey: "AIzaSyAJBCkrqX2SvE10Rjc3GRO57_aH5AKmjN4",
   authDomain: "sancharchat.firebaseapp.com",
   databaseURL: "https://sancharchat-default-rtdb.firebaseio.com",
@@ -10,11 +11,12 @@ const db = getDatabase(initializeApp({
   messagingSenderId: "23453772006",
   appId: "1:23453772006:web:d3766e2b110d165d39b327",
   measurementId: "G-8QM9DQFK26"
-}));
+});
+const db = getDatabase(fb);
+const auth = initializeAuth(fb, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
 
 const { createApp, ref: v, computed, watch, nextTick, onMounted, onUnmounted } = Vue;
 
-const HQ_HASH = "81d2c06c9d4df325302bba3d15769884ce67a86926cd2646e6f04c3f58ce5a0b";
 const SK = "pos8848_rtdb_session";
 const DEF_CATS = ["Momos", "Main Course", "Beverages", "Snacks"];
 const DEF_TABLES = ["T1", "T2", "T3", "T4", "VIP Hall 1", "Outdoor Garden 1"];
@@ -28,7 +30,6 @@ const MODS = [
 const PAYS = [["cash", "Cash"], ["fonepay", "Fonepay QR"], ["esewa", "eSewa Wallet"], ["khalti", "Khalti Wallet"], ["card", "POS Card"], ["credit", "On Account"]];
 const TYPES = [["dine_in", "Dine-In"], ["takeaway", "Takeaway"], ["delivery", "Delivery"]];
 
-const sha = async s => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)))].map(b => b.toString(16).padStart(2, "0")).join("");
 const clean = o => JSON.parse(JSON.stringify(o));
 const sum = (a, k) => a.reduce((s, i) => s + (Number(i[k]) || 0), 0);
 const money = n => Number(n || 0).toLocaleString();
@@ -38,7 +39,7 @@ createApp({
   setup() {
     const session = v(null), mode = v("tenant"), code = v(""), pin = v(""), hq = v("");
     const restaurants = v({}), orders = v({}), allOrders = v({});
-    const ready = v(false), busy = v(false), now = v(Date.now()), view = v("pos");
+    const ready = v(true), busy = v(false), now = v(Date.now()), view = v("pos");
     const fails = v(0), lockUntil = v(0);
     let unsub = [], timer = null;
 
@@ -79,26 +80,44 @@ createApp({
       ...(session.value && session.value.isManager ? [["menu", "Menu Manager"], ["staff", "Staff & PINs"], ["reports", "Sales & Reports"], ["settings", "Outlet Settings"]] : [])]);
 
     /* subscriptions and session */
+    const FIELDS = ["name", "panNumber", "address", "phone", "currencySymbol", "receiptFooter", "vatEnabled", "serviceChargeEnabled", "vatRate", "serviceChargeRate", "categories", "tables", "menuItems"];
+    const setField = (c, f, val) => {
+      const r = { ...restaurants.value };
+      r[c] = { ...(r[c] || {}) };
+      if (val === null) delete r[c][f]; else r[c][f] = val;
+      restaurants.value = r;
+    };
     watch(session, s => {
-      unsub.forEach(f => f()); unsub = []; orders.value = {}; allOrders.value = {};
+      unsub.forEach(f => f()); unsub = []; orders.value = {}; allOrders.value = {}; restaurants.value = {};
       if (s) localStorage.setItem(SK, JSON.stringify(s)); else localStorage.removeItem(SK);
       if (!s) return;
-      if (s.role === "hq") unsub.push(onValue(ref(db, "8848/orders"), x => (allOrders.value = x.val() || {})));
-      else unsub.push(onValue(ref(db, "8848/orders/" + s.code), x => (orders.value = x.val() || {})));
+      if (s.role === "hq") {
+        unsub.push(onValue(ref(db, "8848/restaurants"), x => (restaurants.value = x.val() || {})));
+        unsub.push(onValue(ref(db, "8848/orders"), x => (allOrders.value = x.val() || {})));
+      } else {
+        restaurants.value = { [s.code]: {} };
+        (s.isManager ? [...FIELDS, "managerPin", "staffPins"] : FIELDS).forEach(f =>
+          unsub.push(onValue(ref(db, `8848/restaurants/${s.code}/${f}`), x => setField(s.code, f, x.val()))));
+        unsub.push(onValue(ref(db, "8848/orders/" + s.code), x => (orders.value = x.val() || {})));
+      }
     });
     watch(tables, t => { if (!t.includes(table.value)) table.value = t[0]; });
     watch(view, x => { if (x === "settings") loadSet(); });
 
-    onMounted(() => {
-      try { session.value = JSON.parse(localStorage.getItem(SK)); } catch (e) { session.value = null; }
-      if (session.value && session.value.role === "tenant") enter(true);
-      onValue(ref(db, "8848/restaurants"), x => {
-        restaurants.value = x.val() || {};
-        ready.value = true;
-        const s = session.value;
-        if (s && s.role === "tenant" && !restaurants.value[s.code]) logout();
-      });
+    onMounted(async () => {
       timer = setInterval(() => (now.value = Date.now()), 30000);
+      await auth.authStateReady();
+      let s = null;
+      try { s = JSON.parse(localStorage.getItem(SK)); } catch (e) { s = null; }
+      if (s && auth.currentUser) {
+        const c = (await auth.currentUser.getIdTokenResult()).claims;
+        if (c.role === "hq" || (s.role === "tenant" && c.code === s.code && (c.role === "manager" || (c.role === "staff" && !s.isManager)))) {
+          session.value = s;
+          if (s.role === "tenant") enter(true);
+          return;
+        }
+      }
+      logout();
     });
     onUnmounted(() => clearInterval(timer));
 
@@ -112,29 +131,32 @@ createApp({
       notify("Authentication Failed", m, "error");
     };
     const enter = (keep) => { if (!keep) view.value = "pos"; cart.value = []; dval.value = 0; cname.value = ""; type.value = "dine_in"; table.value = (restaurants.value[session.value.code]?.tables || DEF_TABLES)[0]; };
-    const loginTenant = () => {
-      if (!ready.value || locked()) return;
-      const c = code.value.trim().toUpperCase(), t = restaurants.value[c];
-      if (!t) return fail(`Restaurant code "${c}" was not found in the system.`);
-      const mgr = pin.value === (t.managerPin || "0000");
-      let name = "Manager";
-      if (!mgr) {
-        const s = Object.values(t.staffPins || {}).find(x => x.pin === pin.value);
-        if (!s) return fail("Invalid access PIN provided.");
-        name = s.name;
-      }
-      fails.value = 0;
-      session.value = { role: "tenant", code: c, isManager: mgr, staffName: name, isImpersonating: false };
-      enter(); pin.value = ""; code.value = "";
+    const api = async body => {
+      const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || "Login failed.");
+      try { await signInWithCustomToken(auth, d.token); }
+      catch (e) { throw new Error(/configuration-not-found|operation-not-allowed/.test(e.code || "") ? "Enable Authentication in the Firebase console." : "Login failed."); }
+      return d;
     };
-    const loginHq = async () => {
+    const loginTenant = guard(async () => {
       if (locked()) return;
-      if ((await sha(hq.value)) === HQ_HASH) { fails.value = 0; session.value = { role: "hq", code: null, isManager: true, isImpersonating: false }; hq.value = ""; }
-      else fail("Invalid owner password.");
-    };
+      let d;
+      try { d = await api({ mode: "tenant", code: code.value, pin: pin.value }); } catch (e) { return fail(e.message); }
+      fails.value = 0;
+      session.value = { role: "tenant", code: d.code, isManager: d.role === "manager", staffName: d.name, isImpersonating: false };
+      enter(); pin.value = ""; code.value = "";
+    });
+    const loginHq = guard(async () => {
+      if (locked()) return;
+      try { await api({ mode: "hq", password: hq.value }); } catch (e) { return fail(e.message); }
+      fails.value = 0;
+      session.value = { role: "hq", code: null, isManager: true, isImpersonating: false };
+      hq.value = "";
+    });
     const impersonate = c => { session.value = { role: "tenant", code: c, isManager: true, staffName: "Owner HQ", isImpersonating: true }; enter(); };
     const exitImp = () => (session.value = { role: "hq", code: null, isManager: true, isImpersonating: false });
-    const logout = () => { session.value = null; receipt.value = null; };
+    const logout = () => { session.value = null; receipt.value = null; signOut(auth).catch(() => {}); };
 
     /* POS */
     const type = v("dine_in"), table = v("T1"), cname = v(""), q = v(""), cat = v("All"), cartOpen = v(false);

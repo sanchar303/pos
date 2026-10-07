@@ -211,3 +211,39 @@ tbody tr{transition:background .2s}tbody tr:hover{background:rgba(255,255,255,.5
   .receipt .c{text-align:center}.receipt .l{text-align:left}.receipt .r{text-align:right}
   .receipt .b{font-weight:700}.receipt .big{font-size:14px}.receipt .sm{font-size:9px}
 }
+
+/* mobile polish */
+html{-webkit-text-size-adjust:100%}
+html,body{max-width:100%}
+body{overscroll-behavior-y:none}
+button,.inp,select,.item,.nav button,.chips button{touch-action:manipulation}
+.items,.lines,.tk-items,.main,.tickets,.nav,.modal,.list{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+@keyframes sheet{from{transform:translateY(100%)}to{transform:none}}
+@media (hover:none){.btn:hover,.item:hover,.tbl:hover{transform:none;filter:none}}
+@media (max-width:700px){
+  .overlay{place-items:end center;padding:0}
+  .modal,.modal.sm{max-width:none;max-height:92dvh;border-radius:32px 32px 0 0;padding:20px 18px calc(22px + env(safe-area-inset-bottom));animation:sheet .3s cubic-bezier(.2,.8,.3,1) both}
+  .card.scroll-x{overflow:visible;background:none;border:0;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+  table,thead,tbody,tr,td{display:block}
+  thead{display:none}
+  tbody tr{margin-bottom:14px;padding:8px 4px;border-radius:26px;background:linear-gradient(145deg,rgba(255,255,255,.85),rgba(255,255,255,.5));border:1px solid #fff;box-shadow:7px 7px 16px var(--sh-o),-5px -5px 12px var(--sh-i)}
+  tbody tr:hover{background:linear-gradient(145deg,rgba(255,255,255,.85),rgba(255,255,255,.5))}
+  td{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:9px 16px;border:0;text-align:right}
+  td[data-l]::before{content:attr(data-l);color:var(--mu);font-weight:700;font-size:.9rem;text-align:left;flex:none}
+  td.row{justify-content:flex-end}.nowrap{white-space:normal}
+  td.row .btn{flex:1}
+}
+@media (max-width:600px){
+  .top{gap:8px;padding:8px 12px}
+  .who{order:3;flex-basis:100%}
+  .brand{flex:1}.brand b{font-size:1.1rem}
+  .top>.row.end{flex:none}
+  .bar h2{font-size:1.25rem}
+  .bar>.btn,.bar .row>.btn,.bar .row>select{flex:1}
+  .tools .seg{width:100%}.tools select.inp{flex:1}
+  .stat b{font-size:1.35rem}
+  .kv.total b{font-size:1.6rem}
+  .pays{grid-template-columns:1fr 1fr}
+  .sum .row .btn.ok{flex:none}
+  .login-box{padding:26px 20px;border-radius:34px}
+}
